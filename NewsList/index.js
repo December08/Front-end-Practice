@@ -5,26 +5,31 @@ const fs = require("fs");
 const cheerio = require("cheerio");
 const path = require("path");
 const mime = require("./data/mime.json");
+const { parse } = require("path");
 const server = http.createServer((req, res) => {
     res.setHeader("content-type", "text/html;charset=utf-8");
-    console.log(req.url);
-    let urlObj = url.parse(req.url);
-    console.log(urlObj);
+    let urlObj = url.parse(req.url, true);
     if (urlObj.pathname === "/" || urlObj.pathname === "/index") {
         // 文件读取；
         // let indexData =  fs.readFileSync("./views/index.html")
         // res.end(indexData);
         // 流方式；
         // 组装html；
+        // 规定每页数据个数，计算数据页数
+        let p = parseInt(urlObj.query.p) || 1;
+        let perPage = 5;
+        let newData = JSON.parse(JSON.stringify(data)).splice((p - 1) * perPage, perPage);
+        let pageCount = Math.ceil(data.length / perPage);
+        console.log(pageCount);
         let str = "";
-        data.forEach(v => {
+        newData.forEach(v => {
             str += `<li class="news">
             <a href="${v.imgUrl}">
                 <img src="${v.imgUrl}" alt="">
             </a>
             <div>
                 <h3>
-                    <a href="javascript:;">${v.title}</a>
+                    <a href="/detail?id=${v.id}">${v.title}</a>
                 </h3>
                 <div class="info">
                     <span class="tips"><span>${v.from}</span></span>
@@ -37,19 +42,34 @@ const server = http.createServer((req, res) => {
         let indexData = fs.readFileSync("./views/index.html");
         let $ = cheerio.load(indexData);
         $(".news-list").html(str);
+
+        // 组装分页
+        let pageHtml = `<a href="/index?p=${p <= 1 ? 1 : (p - 1)}" class="prev">⌜</a>`;
+        for (let i = 1; i <= pageCount; i++) {
+            pageHtml += `<a href="/index?p=${i}">${i}</a>`;
+        }
+        pageHtml += `<a href="/index?p=${p >= pageCount ? pageCount : (p + 1)}" class="next">⌝</a>`;
+        $(".pagination").html(pageHtml);
         res.end($.html());
     } else if (urlObj.pathname === "/detail") {
-        let indexData = fs.createReadStream("./views/detail.html");
-        // 不想读了文件之后又写回本地，而是直接打印在网页上让用户看到
-        // 不需要writeStream了，取而代之的就是将pipe括号中的值变成res
-        // 已经有值返回网页端，end值可以不需要了
-        indexData.pipe(res);
+        let id = parseInt(urlObj.query.id) || 1;
+        let detailData = JSON.parse(JSON.stringify(data)).filter(v=>v.id === id)[0];
+        let indexData = fs.readFileSync("./views/detail.html");
+        let $ = cheerio.load(indexData);
+        
+        let str = 
+        `<h1 class="title">${detailData.title}</h1>
+        <div class="article-info"> ${detailData.from} 时间：${detailData.newTime}</div>
+        <p class="content">
+            ${detailData.title}
+        </p>`;
+        $(".text").html(str);
+        res.end($.html());
     } else {
         if (urlObj.pathname !== "/favicon.ico") {
             // 获取扩展名
             let ext = path.extname(urlObj.pathname);
-            console.log("扩展名",ext);
-            res.setHeader("Content-Type",mime[ext]);
+            res.setHeader("Content-Type", mime[ext]);
             let resData = fs.createReadStream("./views/css" + urlObj.pathname);
             resData.pipe(res);
         }
